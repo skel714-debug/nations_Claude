@@ -104,6 +104,7 @@ const DATA = [["Norway","Europe",89000,83.2,13.0,5.5],["Switzerland","Europe",93
   const kl = new THREE.PointLight(0xffffff, .65, 20); kl.position.set(2, 4, 2); scene.add(kl);
 
   const camPos = new THREE.Vector3(0, 1.6, 2.6), tmpM = new THREE.Matrix4();
+  const tmpP = new THREE.Vector3();
 
   const SIZE = 1.25, h = SIZE / 2;
   const plot = new THREE.Group();
@@ -222,13 +223,44 @@ const DATA = [["Norway","Europe",89000,83.2,13.0,5.5],["Switzerland","Europe",93
   keyPanel.rotation.y = -0.55;
   scene.add(keyPanel);
 
-  // Rotating prompt beneath the cube — gives the audience something to look for
+  // ---------- Welcome panel: the first thing a new user sees ----------
+  const welcomeTex = panelTexture(900, 460, x => {
+    x.clearRect(0, 0, 900, 460);
+    x.fillStyle = 'rgba(8,20,38,0.96)';
+    x.fillRect(0, 0, 900, 460);
+    x.strokeStyle = '#7fe0b0'; x.lineWidth = 10; x.strokeRect(5, 5, 890, 450);
+    x.textAlign = 'center';
+    x.fillStyle = '#7fe0b0';
+    x.font = '700 56px "Segoe UI", sans-serif';
+    x.fillText('WELCOME', 450, 84);
+    x.fillStyle = '#cfe8ef';
+    x.font = '500 38px "Segoe UI", sans-serif';
+    x.fillText('Every ball floating in front of you', 450, 152);
+    x.fillText('is a country.', 450, 198);
+    x.fillStyle = '#e8c76f';
+    x.font = '700 40px "Segoe UI", sans-serif';
+    x.fillText('POINT AT ONE AND PULL THE TRIGGER', 450, 288);
+    x.fillStyle = '#9fb8c8';
+    x.font = '500 34px "Segoe UI", sans-serif';
+    x.fillText('to see who they are', 450, 336);
+    x.fillStyle = '#5f8296';
+    x.font = '500 28px "Segoe UI", sans-serif';
+    x.fillText('That is the only thing you need to do.', 450, 404);
+  });
+  const welcome = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.9, 0.46),
+    new THREE.MeshBasicMaterial({ map: welcomeTex, transparent: true, side: THREE.DoubleSide }));
+  welcome.position.set(0, 1.35, -0.55);
+  scene.add(welcome);
+  let welcomeShown = true;
+
+  // Rotating prompt beneath the cube — plain language, one idea at a time
   const PROMPTS = [
-    'The cloud slopes upward: richer countries tend to live longer',
-    'Find the two giants \u2014 India and China, over a billion people each',
-    'Hide a region with the legend to see the pattern change',
-    'Left to right is a x10 jump each step, not a fixed amount',
-    'Look for the odd ones out \u2014 who lives longer than their income suggests?'
+    'Point at any ball and pull the trigger to see the country',
+    'Notice the shape: richer countries sit higher \u2014 people live longer',
+    'The two biggest balls are India and China',
+    'Look for a ball that sits higher than the ones beside it',
+    'Colours are world regions \u2014 blue is Europe, gold is Africa'
   ];
   let promptIdx = 0, promptTimer = 0;
   function makePromptTex(text) {
@@ -277,7 +309,7 @@ const DATA = [["Norway","Europe",89000,83.2,13.0,5.5],["Switzerland","Europe",93
   // Info card
   const ic = document.createElement('canvas'); ic.width = 512; ic.height = 232;
   const ix = ic.getContext('2d'); const itex = new THREE.CanvasTexture(ic);
-  const info = new THREE.Mesh(new THREE.PlaneGeometry(.52, .236),
+  const info = new THREE.Mesh(new THREE.PlaneGeometry(.68, .308),
     new THREE.MeshBasicMaterial({ map: itex, transparent: true, side: THREE.DoubleSide }));
   info.visible = false; scene.add(info);
   function money(v){ return '$' + v.toLocaleString(); }
@@ -319,6 +351,10 @@ const DATA = [["Norway","Europe",89000,83.2,13.0,5.5],["Switzerland","Europe",93
   // Interaction
   const ray = new THREE.Raycaster(); const ctrls = [];
   let hovered = null, grabbing = null, gq = new THREE.Quaternion(), spin = 0;
+  let idle = 0;                 // seconds since the user last did anything
+  let autoSpin = true;          // gentle rotation so nobody has to learn grab-to-turn
+  function touched() { idle = 0; autoSpin = false; if (welcomeShown) hideWelcome(); }
+  function hideWelcome() { welcomeShown = false; welcome.visible = false; }
   function mkRay() {
     const g = new THREE.Group();
     g.add(new THREE.Mesh(new THREE.SphereGeometry(.012, 12, 10), new THREE.MeshBasicMaterial({ color: 0x9fe8f2 })));
@@ -334,8 +370,24 @@ const DATA = [["Norway","Europe",89000,83.2,13.0,5.5],["Switzerland","Europe",93
     tmpM.identity().extractRotation(c.matrixWorld);
     ray.ray.origin.setFromMatrixPosition(c.matrixWorld);
     ray.ray.direction.set(0, 0, -1).applyMatrix4(tmpM);
-    const hits = ray.intersectObjects(pts.filter(p => p.visible).concat(sw), false);
-    return hits.length ? hits[0].object : null;
+    // Generous tolerance: small spheres are hard to hit for a first-time headset user
+    ray.params.Points.threshold = 0.04;
+    const targets = pts.filter(p => p.visible).concat(sw);
+    let hits = ray.intersectObjects(targets, false);
+    if (hits.length) return hits[0].object;
+    // Nothing hit directly — find the nearest visible country within a small cone
+    let best = null, bestAng = 0.055;
+    const o = ray.ray.origin, dir = ray.ray.direction;
+    for (const p of pts) {
+      if (!p.visible) continue;
+      p.getWorldPosition(tmpP);
+      tmpP.sub(o);
+      const dist = tmpP.length();
+      if (dist < 0.05) continue;
+      const ang = tmpP.normalize().angleTo(dir);
+      if (ang < bestAng) { bestAng = ang; best = p; }
+    }
+    return best;
   }
   function toggle(i) {
     shown[i] = !shown[i];
@@ -346,6 +398,7 @@ const DATA = [["Norway","Europe",89000,83.2,13.0,5.5],["Switzerland","Europe",93
     rebuildDrops();
   }
   function down(c) {
+    touched();
     const hit = pick(c);
     if (hit && hit.userData.li !== undefined) { toggle(hit.userData.li); buzz(c, .5, 40); return; }
     if (hit && hit.userData.d) {
@@ -418,11 +471,25 @@ const DATA = [["Norway","Europe",89000,83.2,13.0,5.5],["Switzerland","Europe",93
       camera.lookAt(plot.position);
     }
     if (grabbing) {
+      touched();
       grabbing.getWorldQuaternion(q);
       qd.copy(gq).invert().premultiply(q);
       const e = new THREE.Euler().setFromQuaternion(qd, 'YXZ');
       cloud.rotation.y += e.y; spin = e.y * .35; gq.copy(q);
     } else if (Math.abs(spin) > .0004) { cloud.rotation.y += spin; spin *= .95; }
+    else if (autoSpin) { cloud.rotation.y += dt * 0.09; }   // slow drift: no controls to learn
+
+    // Idle handling: bring everything back to a clean state for the next person
+    idle += dt;
+    if (idle > 25 && !autoSpin) autoSpin = true;
+    if (idle > 40) {
+      info.visible = false;
+      let changed = false;
+      for (let i = 0; i < shown.length; i++) if (!shown[i]) { toggle(i); changed = true; }
+      if (!welcomeShown) { welcomeShown = true; welcome.visible = true; }
+      idle = 26;                                            // keep drifting, don't re-reset every frame
+      if (changed) rebuildDrops();
+    }
 
     let hit = null;
     for (const c of ctrls) {
@@ -446,6 +513,7 @@ const DATA = [["Norway","Europe",89000,83.2,13.0,5.5],["Switzerland","Europe",93
       if (old) old.dispose();
     }
     if (info.visible) info.lookAt(camPos);
+    if (welcomeShown) welcome.lookAt(camPos);
     renderer.render(scene, camera);
   });
   addEventListener('resize', () => {
