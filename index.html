@@ -108,7 +108,7 @@ const DATA = [["Norway","Europe",89000,83.2,13.0,5.5],["Switzerland","Europe",93
 
   const SIZE = 1.25, h = SIZE / 2;
   const plot = new THREE.Group();
-  plot.position.set(0, 1.2, -0.95);
+  plot.position.set(0, 1.25, -1.85);
   scene.add(plot);
 
   // Income is log-scaled: the standard fix so poor countries aren't crushed at one edge
@@ -153,14 +153,17 @@ const DATA = [["Norway","Europe",89000,83.2,13.0,5.5],["Switzerland","Europe",93
   }
   function place(text, pos, color, px, sc) { const s = sprite(text, color, px, sc); s.position.copy(pos); plot.add(s); }
 
-  place('INCOME  per person  \u2192', new THREE.Vector3(0, -h - .12, h + .02), '#7fd4e0', 46, .0027);
-  place('LIFE  EXPECTANCY  \u2192', new THREE.Vector3(-h - .15, 0, h + .02), '#7fd4e0', 46, .0027);
-  place('SCHOOLING  \u2192', new THREE.Vector3(h + .04, -h - .12, 0), '#7fd4e0', 46, .0027);
-  place('$500', new THREE.Vector3(-h, -h - .06, h), '#5f8296', 34, .0022);  place('$95,000', new THREE.Vector3(h, -h - .06, h), '#5f8296', 34, .0022);
-  place('52 yrs', new THREE.Vector3(-h - .07, -h, h), '#5f8296', 34, .0022);
-  place('86 yrs', new THREE.Vector3(-h - .07, h, h), '#5f8296', 34, .0022);
-  place('2 yrs', new THREE.Vector3(h + .03, -h - .06, -h), '#5f8296', 34, .0022);
-  place('15 yrs', new THREE.Vector3(h + .03, -h - .06, h), '#5f8296', 34, .0022);
+  // Income labels sit on the FRONT face, schooling on the RIGHT face, well apart,
+  // so the two axes' maximum ticks can no longer stack at the shared corner.
+  place('INCOME  per person  \u2192', new THREE.Vector3(0, -h - .21, h + .16), '#7fd4e0', 46, .0027);
+  place('$500',    new THREE.Vector3(-h, -h - .08, h + .16), '#5f8296', 32, .0021);
+  place('$95,000', new THREE.Vector3(h,  -h - .08, h + .16), '#5f8296', 32, .0021);
+  place('SCHOOLING  \u2192', new THREE.Vector3(h + .42, -h - .21, 0), '#7fd4e0', 46, .0027);
+  place('2 yrs',  new THREE.Vector3(h + .42, -h - .08, -h), '#5f8296', 32, .0021);
+  place('15 yrs', new THREE.Vector3(h + .42, -h - .08,  h), '#5f8296', 32, .0021);
+  place('LIFE  EXPECTANCY  \u2192', new THREE.Vector3(-h - .26, 0, h + .02), '#7fd4e0', 46, .0027);
+  place('52 yrs', new THREE.Vector3(-h - .11, -h, h), '#5f8296', 32, .0021);
+  place('86 yrs', new THREE.Vector3(-h - .11,  h, h), '#5f8296', 32, .0021);
 
   // ---------- In-world explainer (visible when casting from the headset) ----------
   function panelTexture(w, hgt, draw) {
@@ -219,8 +222,8 @@ const DATA = [["Norway","Europe",89000,83.2,13.0,5.5],["Switzerland","Europe",93
   const keyPanel = new THREE.Mesh(
     new THREE.PlaneGeometry(0.62, 0.5425),
     new THREE.MeshBasicMaterial({ map: keyTex, transparent: true, side: THREE.DoubleSide }));
-  keyPanel.position.set(1.15, 1.30, -0.55);
-  keyPanel.rotation.y = -0.55;
+  keyPanel.position.set(1.55, 1.35, -1.30);
+  keyPanel.rotation.y = -0.5;
   scene.add(keyPanel);
 
   // ---------- Welcome panel: the first thing a new user sees ----------
@@ -250,7 +253,7 @@ const DATA = [["Norway","Europe",89000,83.2,13.0,5.5],["Switzerland","Europe",93
   const welcome = new THREE.Mesh(
     new THREE.PlaneGeometry(0.9, 0.46),
     new THREE.MeshBasicMaterial({ map: welcomeTex, transparent: true, side: THREE.DoubleSide }));
-  welcome.position.set(0, 1.35, -0.55);
+  welcome.position.set(0, 1.4, -1.15);
   scene.add(welcome);
   let welcomeShown = true;
 
@@ -332,7 +335,7 @@ const DATA = [["Norway","Europe",89000,83.2,13.0,5.5],["Switzerland","Europe",93
 
   // Legend
   const legend = new THREE.Group();
-  legend.position.set(-1.12, 1.3, -.5); legend.rotation.y = .55; scene.add(legend);
+  legend.position.set(-1.45, 1.35, -1.30); legend.rotation.y = .5; scene.add(legend);
   const sw = [];
   const lt = sprite('REGIONS  \u00b7  point + trigger to hide', '#7fd4e0', 30, .0016);
   lt.position.set(.12, .30, 0); legend.add(lt);
@@ -420,7 +423,7 @@ const DATA = [["Norway","Europe",89000,83.2,13.0,5.5],["Switzerland","Europe",93
     rig.add(c); ctrls.push(c);
   }
 
-  let drag = false, px = 0, py = 0, yaw = .5, pitch = .16, dist = 2.5;
+  let drag = false, px = 0, py = 0, yaw = .5, pitch = .16, dist = 3.1;
   renderer.domElement.addEventListener('pointerdown', e => { drag = true; px = e.clientX; py = e.clientY; });
   addEventListener('pointerup', () => drag = false);
   addEventListener('pointermove', e => {
