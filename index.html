@@ -373,6 +373,38 @@ const DATA = [["Norway","Europe",89000,83.2,13.0,5.5],["Switzerland","Europe",93
     box.userData = { li: i }; sw.push(box);
   });
 
+  // ---------- EXIT panel: the only way out of an immersive session from inside ----------
+  const exitTex = panelTexture(384, 160, x => {
+    x.clearRect(0, 0, 384, 160);
+    x.fillStyle = 'rgba(46,14,18,0.96)';
+    x.fillRect(0, 0, 384, 160);
+    x.strokeStyle = '#e07f7f'; x.lineWidth = 8; x.strokeRect(4, 4, 376, 152);
+    x.textAlign = 'center';
+    x.fillStyle = '#f0a8a8';
+    x.font = '700 62px "Segoe UI", sans-serif';
+    x.fillText('EXIT', 192, 74);
+    x.fillStyle = '#d8b0b0';
+    x.font = '600 28px "Segoe UI", sans-serif';
+    x.fillText('point + trigger to leave VR', 192, 124);
+    return x;
+  });
+  const exitPanel = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.42, 0.175),
+    new THREE.MeshBasicMaterial({ map: exitTex, transparent: true, side: THREE.DoubleSide }));
+  exitPanel.position.set(-1.45, 0.82, -1.30);
+  exitPanel.rotation.y = 0.5;
+  exitPanel.userData = { exit: true };
+  scene.add(exitPanel);
+
+  // A hidden, larger collider so EXIT is easy to hit even with shaky aim
+  const exitHit = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.62, 0.30),
+    new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide }));
+  exitHit.position.copy(exitPanel.position);
+  exitHit.rotation.copy(exitPanel.rotation);
+  exitHit.userData = { exit: true };
+  scene.add(exitHit);
+
   // Interaction
   const ray = new THREE.Raycaster(); const ctrls = [];
   let hovered = null, grabbing = null, gq = new THREE.Quaternion(), spin = 0;
@@ -398,11 +430,11 @@ const DATA = [["Norway","Europe",89000,83.2,13.0,5.5],["Switzerland","Europe",93
     tmpM.identity().extractRotation(c.matrixWorld);
     ray.ray.origin.setFromMatrixPosition(c.matrixWorld);
     ray.ray.direction.set(0, 0, -1).applyMatrix4(tmpM);
-    const targets = hits.filter(hh => hh.userData.marker.visible).concat(sw);
+    const targets = hits.filter(hh => hh.userData.marker.visible).concat(sw, [exitHit]);
     const r = ray.intersectObjects(targets, false);
     if (!r.length) { lastHitDist = 3; return null; }
     lastHitDist = r[0].distance;
-    return r[0].object.userData.marker || r[0].object;
+    return r[0].object.userData.marker || r[0].object;   // exit/legend return themselves
   }
   function toggle(i) {
     shown[i] = !shown[i];
@@ -416,6 +448,11 @@ const DATA = [["Norway","Europe",89000,83.2,13.0,5.5],["Switzerland","Europe",93
   function down(c) {
     touched();
     const hit = pick(c);
+    if (hit && hit.userData.exit) {
+      buzz(c, .6, 80);
+      if (sess) sess.end();
+      return;
+    }
     if (hit && hit.userData.li !== undefined) { toggle(hit.userData.li); buzz(c, .5, 40); return; }
     if (hit && hit.userData.d) {
       drawInfo(hit.userData.d, hit.userData.ri);
