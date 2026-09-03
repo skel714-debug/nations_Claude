@@ -136,12 +136,23 @@ const DATA = [["Norway","Europe",89000,83.2,13.0,5.5],["Switzerland","Europe",93
   plot.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(gp),
     new THREE.LineBasicMaterial({ color: 0x123047, transparent: true, opacity: .45 })));
 
-  function sprite(text, color, px, sc) {
+  // Labels carry an opaque backing plate: readable against a bright real room in
+  // passthrough, and legible even when two labels crowd each other.
+  function sprite(text, color, px, sc, plate) {
     const c = document.createElement('canvas'), f = px || 40, t0 = c.getContext('2d');
     t0.font = '600 ' + f + 'px "Segoe UI", sans-serif';
-    c.width = Math.max(16, Math.ceil(t0.measureText(text).width) + 18);
-    c.height = Math.ceil(f * 1.5);
+    const pad = plate === false ? 18 : Math.round(f * 0.8);
+    c.width = Math.max(16, Math.ceil(t0.measureText(text).width) + pad * 2);
+    c.height = Math.ceil(f * 1.7);
     const x = c.getContext('2d');
+    if (plate !== false) {
+      const r = Math.min(14, c.height / 3);
+      x.fillStyle = 'rgba(6,16,30,0.78)';
+      x.beginPath();
+      if (x.roundRect) x.roundRect(0, 0, c.width, c.height, r);
+      else x.rect(0, 0, c.width, c.height);
+      x.fill();
+    }
     x.font = '600 ' + f + 'px "Segoe UI", sans-serif';
     x.fillStyle = color || '#9fe8f2'; x.textAlign = 'center'; x.textBaseline = 'middle';
     x.fillText(text, c.width / 2, c.height / 2);
@@ -284,7 +295,9 @@ const DATA = [["Norway","Europe",89000,83.2,13.0,5.5],["Switzerland","Europe",93
   const ptGeo = new THREE.SphereGeometry(1, 14, 12);
   const mats = REGIONS.map(r => new THREE.MeshStandardMaterial({
     color: r.color, emissive: r.color, emissiveIntensity: .35, roughness: .4, metalness: .15 }));
-  const pts = [], cloud = new THREE.Group(); plot.add(cloud);
+  const pts = [], hits = [], cloud = new THREE.Group(); plot.add(cloud);
+  const hitGeo = new THREE.SphereGeometry(1, 8, 6);
+  const hitMat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false });
 
   DATA.forEach(d => {
     const ri = rIndex[d[1]];
@@ -297,6 +310,15 @@ const DATA = [["Norway","Europe",89000,83.2,13.0,5.5],["Switzerland","Europe",93
     m.scale.setScalar(rad);
     m.userData = { d: d, ri: ri, rad: rad };
     cloud.add(m); pts.push(m);
+
+    // Invisible, enlarged collider: makes small countries selectable without
+    // guessing what the user meant. Standard practice in production VR.
+    const hit = new THREE.Mesh(hitGeo, hitMat);
+    hit.position.copy(m.position);
+    hit.scale.setScalar(Math.max(rad * 2.4, 0.055));
+    hit.userData = { marker: m };
+    cloud.add(hit);
+    hits.push(hit);
   });
 
   const dl = new THREE.LineSegments(new THREE.BufferGeometry(),
@@ -369,32 +391,23 @@ const DATA = [["Norway","Europe",89000,83.2,13.0,5.5],["Switzerland","Europe",93
     const s = c.userData.src;
     if (s && s.gamepad && s.gamepad.hapticActuators && s.gamepad.hapticActuators[0]) s.gamepad.hapticActuators[0].pulse(i, ms);
   }
+  // Raycast against enlarged invisible colliders rather than the visible spheres.
+  // Predictable (the ray really did touch something) and forgiving for a first-timer.
+  let lastHitDist = 3;
   function pick(c) {
     tmpM.identity().extractRotation(c.matrixWorld);
     ray.ray.origin.setFromMatrixPosition(c.matrixWorld);
     ray.ray.direction.set(0, 0, -1).applyMatrix4(tmpM);
-    // Generous tolerance: small spheres are hard to hit for a first-time headset user
-    ray.params.Points.threshold = 0.04;
-    const targets = pts.filter(p => p.visible).concat(sw);
-    let hits = ray.intersectObjects(targets, false);
-    if (hits.length) return hits[0].object;
-    // Nothing hit directly — find the nearest visible country within a small cone
-    let best = null, bestAng = 0.055;
-    const o = ray.ray.origin, dir = ray.ray.direction;
-    for (const p of pts) {
-      if (!p.visible) continue;
-      p.getWorldPosition(tmpP);
-      tmpP.sub(o);
-      const dist = tmpP.length();
-      if (dist < 0.05) continue;
-      const ang = tmpP.normalize().angleTo(dir);
-      if (ang < bestAng) { bestAng = ang; best = p; }
-    }
-    return best;
+    const targets = hits.filter(hh => hh.userData.marker.visible).concat(sw);
+    const r = ray.intersectObjects(targets, false);
+    if (!r.length) { lastHitDist = 3; return null; }
+    lastHitDist = r[0].distance;
+    return r[0].object.userData.marker || r[0].object;
   }
   function toggle(i) {
     shown[i] = !shown[i];
     pts.forEach(p => p.visible = shown[p.userData.ri]);
+    hits.forEach(hh => hh.visible = hh.userData.marker.visible);
     sw[i].material.emissiveIntensity = shown[i] ? .4 : .04;
     sw[i].material.transparent = !shown[i];
     sw[i].material.opacity = shown[i] ? 1 : .35;
@@ -499,7 +512,11 @@ const DATA = [["Norway","Europe",89000,83.2,13.0,5.5],["Switzerland","Europe",93
       if (!c.userData.src) continue;
       const p = pick(c); if (p) hit = p;
       const v = c.getObjectByName('vis'); const l = v && v.getObjectByName('ray');
-      if (l) l.material.opacity = p ? 1 : .5;
+      if (l) {
+        l.material.opacity = p ? 1 : .5;
+        // Ray ends exactly on the target — a clear "you are pointing at this" cue
+        l.scale.z += ((p ? lastHitDist : 3) - l.scale.z) * 0.4;
+      }
     }
     if (hovered && hovered !== hit && hovered.userData.rad) hovered.scale.setScalar(hovered.userData.rad);
     if (hit && hit.userData.rad) hit.scale.setScalar(hit.userData.rad * 1.5);
